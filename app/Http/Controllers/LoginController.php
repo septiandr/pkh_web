@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Pengguna;
+use Hash;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Session;
@@ -20,16 +21,16 @@ class LoginController extends Controller
     public function login(Request $request)
     {
         $credentials = $request->only('username', 'password');
-
+    
         $pengguna = Pengguna::where('username', $credentials['username'])->first();
-
-        if ($pengguna && password_verify($credentials['password'], $pengguna->password)) {
-            Session::put('isLogin', true); // Store isLogin in the session
+    
+        if ($pengguna && Hash::check($credentials['password'], $pengguna->password)) {
+            Session::put('isLogin', true);
             return redirect()->route('home')->with('success', 'Login successful!');
         }
-
+    
         return back()->withErrors(['login' => 'Invalid username or password.']);
-    }
+    }    
 
     public function logout(Request $request)
     {

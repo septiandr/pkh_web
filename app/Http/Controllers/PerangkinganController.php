@@ -15,7 +15,6 @@ class PerangkinganController extends Controller
         $alternatif = $alternatif->filter(function ($alt) {
             return $alt['eligible'] === 1;
         });
-
         $matrix = $alternatif->map(function ($alt) {
             return [
                 'id_alternatif' => $alt['id_alternatif'],
@@ -58,6 +57,7 @@ class PerangkinganController extends Controller
                 'keterangan' => $keterangan,
             ];
         });
+
 
         return view('program.perangkingan', compact('results'));
     }
