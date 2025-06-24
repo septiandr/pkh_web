@@ -120,11 +120,11 @@ class AlternatifController extends Controller
         $kriteria = Kriteria::with('subKriteria')->get();
 
         $fields = [
-            ['name' => 'nik', 'type' => 'text','required' => true, 'label' => 'NIK'],
-            ['name' => 'nama_lengkap', 'type' => 'text','required' => true, 'label' => 'Nama Lengkap'],
-            ['name' => 'alamat', 'type' => 'textarea','required' => true, 'label' => 'Alamat'],
-            ['name' => 'pendapatan', 'type' => 'number','required' => true, 'label' => 'Pendapatan (Rp)', 'min' => 0],
-            ['name' => 'luas_tanah', 'type' => 'number','required' => true, 'label' => 'Luas Tanah (m²)', 'min' => 0],
+            ['name' => 'nik', 'type' => 'text', 'required' => true, 'label' => 'NIK'],
+            ['name' => 'nama_lengkap', 'type' => 'text', 'required' => true, 'label' => 'Nama Lengkap'],
+            ['name' => 'alamat', 'type' => 'textarea', 'required' => true, 'label' => 'Alamat'],
+            ['name' => 'pendapatan', 'type' => 'number', 'required' => true, 'label' => 'Pendapatan (Rp)', 'min' => 0],
+            ['name' => 'luas_tanah', 'type' => 'number', 'required' => true, 'label' => 'Luas Tanah (m²)', 'min' => 0],
         ];
 
         // Mapping kriteria ke fields
@@ -155,10 +155,10 @@ class AlternatifController extends Controller
 
         $fields = [
             ['name' => 'nik', 'type' => 'text', 'label' => 'NIK', 'required' => true, 'value' => $alternatif->nik],
-            ['name' => 'nama_lengkap', 'type' => 'text', 'label' => 'Nama Lengkap','required' => true, 'value' => $alternatif->nama_lengkap],
-            ['name' => 'alamat', 'type' => 'textarea', 'label' => 'Alamat','required' => true, 'value' => $alternatif->alamat],
-            ['name' => 'pendapatan', 'type' => 'number', 'label' => 'Pendapatan (Rp)','required' => true, 'min' => 0, 'value' => $alternatif->pendapatan],
-            ['name' => 'luas_tanah', 'type' => 'number', 'label' => 'Luas Tanah (m²)','required' => true, 'min' => 0, 'value' => $alternatif->luas_tanah],
+            ['name' => 'nama_lengkap', 'type' => 'text', 'label' => 'Nama Lengkap', 'required' => true, 'value' => $alternatif->nama_lengkap],
+            ['name' => 'alamat', 'type' => 'textarea', 'label' => 'Alamat', 'required' => true, 'value' => $alternatif->alamat],
+            ['name' => 'pendapatan', 'type' => 'number', 'label' => 'Pendapatan (Rp)', 'required' => true, 'min' => 0, 'value' => $alternatif->pendapatan],
+            ['name' => 'luas_tanah', 'type' => 'number', 'label' => 'Luas Tanah (m²)', 'required' => true, 'min' => 0, 'value' => $alternatif->luas_tanah],
         ];
 
         // Mapping kriteria ke fields
@@ -177,13 +177,8 @@ class AlternatifController extends Controller
         }
 
         // Add dokumen_preview field at the bottom
-        $fields[] = [
-            'name' => 'dokumen_preview',
-            'type' => 'file',
-            'label' => 'Surat Pengantar RT',
-            'value' => $alternatif->dokumen,
-            // 'preview_url' => route('alternatif.viewDokumen', ['filename' => $alternatif->dokumen]),
-        ];
+
+        
 
         $data = [
             'title' => 'Edit Data Alternatif',
@@ -205,6 +200,14 @@ class AlternatifController extends Controller
             'luas_tanah' => 'required|numeric|min:0',
             'dokumen' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:2048',
         ]);
+
+
+        $request->validate([
+            'dokumen' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:2048',
+        ], [
+            'dokumen.max' => 'Ukuran file terlalu besar. Maksimum 2MB.',
+        ]);
+
 
         // Fetch the alternatif by ID
         $alternatif = Alternatif::findOrFail($id);

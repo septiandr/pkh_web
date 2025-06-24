@@ -11,30 +11,39 @@
             @if($data['method'] === 'PUT') @method('PUT') @endif
 
             <div class="grid grid-cols-1 gap-6">
+                {{-- Tampilkan semua field KECUALI dokumen --}}
                 @foreach($fields as $field)
-                    <div>
-                        <x-input-field :type="$field['type']" :name="$field['name']" :label="$field['label']"
-                            :value="$field['value'] ?? ''" :required="$field['required'] ?? false" :min="$field['min'] ?? null"
-                            :options="$field['options'] ?? []" :existing="$field['value'] ?? []" />
-                        @error($field['name'])
-                            <p class="text-sm text-red-500 mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
+                    @if($field['name'] !== 'dokumen_preview')
+                        <div>
+                            <x-input-field :type="$field['type']" :name="$field['name']" :label="$field['label']"
+                                :value="$field['value'] ?? ''" :required="$field['required'] ?? false" :min="$field['min'] ?? null"
+                                :options="$field['options'] ?? []" :existing="$field['value'] ?? []" />
+                            @error($field['name'])
+                                <p class="text-sm text-red-500 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+                    @endif
                 @endforeach
 
-                @if ($data['method'] === 'POST')
-                    <div>
-                        <x-input-field type="file" name="dokumen" label="Surat Tidak Mampu" :existing="$alternatif->dokumen ?? null" />
-                        @if(isset($alternatif->dokumen))
-                            <a href="{{ asset('storage/' . $alternatif->dokumen) }}" target="_blank"
-                                class="text-blue-600 text-sm underline">Lihat Dokumen</a>
-                        @endif
-                        @error('dokumen')
-                            <p class="text-sm text-red-500 mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
-                @endif
+                {{-- Hanya satu input file untuk dokumen --}}
+                <div>
+                    <label for="dokumen" class="block text-sm font-medium text-gray-700 mb-1">Upload Surat Tidak
+                        Mampu</label>
+                    <input type="file" name="dokumen" id="dokumen"
+                        class="block w-full text-sm text-gray-700 border border-gray-300 rounded-md shadow-sm focus:ring focus:ring-indigo-200 focus:outline-none">
 
+                    {{-- Tampilkan link jika dokumen sudah ada --}}
+                    @if(isset($alternatif->dokumen))
+                        <a href="{{ asset('storage/' . $alternatif->dokumen) }}" target="_blank"
+                            class="text-blue-600 text-sm underline mt-1 inline-block">
+                            Lihat Dokumen Sebelumnya
+                        </a>
+                    @endif
+
+                    @error('dokumen')
+                        <p class="text-sm text-red-500 mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
             </div>
 
             <div class="flex justify-end">
@@ -46,3 +55,19 @@
         </form>
     </div>
 @endsection
+
+{{-- Script validasi ukuran file --}}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const fileInput = document.querySelector('input[name="dokumen"]');
+        if (fileInput) {
+            fileInput.addEventListener('change', function () {
+                const maxSize = 2 * 1024 * 1024; // 2MB
+                if (this.files[0] && this.files[0].size > maxSize) {
+                    alert("Ukuran file terlalu besar. Maksimal 2MB.");
+                    this.value = ''; // Clear file input
+                }
+            });
+        }
+    });
+</script>
