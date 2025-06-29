@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Helpers\AlternatifHelper;
 use App\Models\Penilaian;
+use App\Models\Rangking;
 use Illuminate\Http\Request;
 use App\Models\Kriteria;
 use App\Models\Alternatif;
+use Illuminate\Support\Collection;
+
 
 class PenilaianController extends Controller
 {
@@ -16,6 +19,107 @@ class PenilaianController extends Controller
         if ($max == $min)
             return 0;
         return round(($max - $x) / ($max - $min), 2);
+    }
+    private function mapAlternatif(Collection $items): array
+    {
+        return $items->map(function ($item) {
+            $penilaian = collect($item['penilaian'])->mapWithKeys(function ($nilaiItem) {
+                $namaKriteria = $nilaiItem['kriteria']['nama'];
+                $nilai = (float) $nilaiItem['sub_kriteria']['nilai'];
+                return [$namaKriteria => $nilai];
+            });
+
+            return [
+                'id_alternatif' => $item['id_alternatif'],
+                'nama_lengkap' => $item['nama_lengkap'],
+                'eligible' => $item['eligible'],
+                'penilaian' => $penilaian->toArray(),
+            ];
+        })->toArray();
+    }
+    private function hitungNormalisasi(array $data): array
+    {
+        // Ambil semua nama kriteria dari data pertama
+        $kriteriaList = array_keys($data[0]['penilaian']);
+
+        // Hitung nilai maksimum dari tiap kriteria
+        $maxPerKriteria = [];
+        foreach ($kriteriaList as $kriteria) {
+            $maxPerKriteria[$kriteria] = collect($data)->max(function ($alt) use ($kriteria) {
+                return $alt['penilaian'][$kriteria];
+            });
+        }
+
+        // Proses normalisasi
+        return collect($data)->map(function ($alt) use ($maxPerKriteria) {
+            $normalisasi = [];
+
+            foreach ($alt['penilaian'] as $kriteria => $nilai) {
+                $max = $maxPerKriteria[$kriteria] ?: 1; // Hindari bagi 0
+                $normalisasi[$kriteria] = round($nilai / $max, 4);
+            }
+
+            return [
+                'id_alternatif' => $alt['id_alternatif'],
+                'nama_lengkap' => $alt['nama_lengkap'],
+                'eligible' => $alt['eligible'],
+                'penilaian' => $normalisasi,
+            ];
+        })->toArray();
+    }
+
+    private function hitungSkorPreferensi(array $normalisasi, array $bobot): array
+    {
+        // Pastikan key bobot lowercase agar konsisten
+        $bobot = array_change_key_case($bobot, CASE_LOWER);
+
+        $hasil = [];
+
+        foreach ($normalisasi as $alt) {
+            $total = 0;
+            $log = "{$alt['nama_lengkap']} (ID: {$alt['id_alternatif']}) => V{$alt['id_alternatif']} = ";
+            $logRumus = [];
+
+            foreach ($alt['penilaian'] as $kriteriaNama => $nilaiNormalisasi) {
+                $nama = strtolower($kriteriaNama); // lowercase match
+                $bobotKriteria = $bobot[$nama] ?? 0;
+                $hasilPerkalian = $bobotKriteria * $nilaiNormalisasi;
+                $logRumus[] = "({$bobotKriteria} × " . number_format($nilaiNormalisasi, 2) . ")";
+                $total += $hasilPerkalian;
+            }
+
+            // $log .= implode(' + ', $logRumus) . ' = ' . number_format($total, 2);
+            // echo $log . "\n";
+
+            $hasil[] = [
+                'id_alternatif' => $alt['id_alternatif'],
+                'nama_lengkap' => $alt['nama_lengkap'],
+                'skor' => round($total, 4),
+                'log' => $log,
+            ];
+        }
+
+        return $hasil;
+    }
+
+    private function simpanKeRangking(array $skorPreferensi): void
+    {
+        foreach ($skorPreferensi as $item) {
+            Rangking::updateOrCreate(
+                ['id_alternatif' => $item['id_alternatif']],
+                [
+                    'total_nilai' => $item['skor'],
+                    'keterangan' => 'Hasil perangkingan sistem', // bisa Anda ubah sesuai kebutuhan
+                ]
+            );
+        }
+    }
+    
+    private function getBobotKriteria(): array
+    {
+        return Kriteria::all()
+            ->pluck('bobot', 'nama_kriteria')
+            ->toArray();
     }
 
     public function index()
@@ -78,84 +182,28 @@ class PenilaianController extends Controller
     {
         $alternatif = AlternatifHelper::getAlternatifData();
 
-        // 1. Kumpulkan semua nilai per id_kriteria untuk normalisasi
-        $nilaiPerKriteria = [];
+        $mapped = $this->mapAlternatif($alternatif);
+        $normalisasi = $this->hitungNormalisasi($mapped);
+        $bobot = $this->getBobotKriteria();
+        $skorPreferensi = $this->hitungSkorPreferensi($normalisasi, $bobot);
 
-        foreach ($alternatif as $alt) {
-            foreach ($alt['penilaian'] as $penilaian) {
-                $id_kriteria = $penilaian['kriteria']['id_kriteria'] ?? null;
-                $nilai = (float) ($penilaian['sub_kriteria']['nilai'] ?? 0);
-
-                if (!is_null($id_kriteria)) {
-                    $nilaiPerKriteria[$id_kriteria][] = $nilai;
-                }
-            }
-        }
-
-        // 2. Hitung nilai maksimum per kriteria
-        $maxPerKriteria = [];
-        foreach ($nilaiPerKriteria as $id_kriteria => $nilaiList) {
-            $maxPerKriteria[$id_kriteria] = max($nilaiList);
-        }
-
-        // 3. Hitung nilai total untuk setiap alternatif
-        $results = collect($alternatif)->map(function ($alt) use ($maxPerKriteria) {
-            $penilaianList = collect($alt['penilaian']);
-
-            // Deteksi duplikat id_kriteria
-            $idCounts = $penilaianList->pluck('kriteria.id_kriteria')->countBy();
-            $duplikatIds = $idCounts->filter(fn($count) => $count > 1)->keys();
-
-            if ($duplikatIds->isNotEmpty()) {
-                logger("Duplikat ID Kriteria ditemukan di {$alt['nama_lengkap']}: " . $duplikatIds->implode(', '));
-            }
-
-            // Ambil hanya satu penilaian per id_kriteria
-            $filtered = $penilaianList
-                ->keyBy(fn($p) => $p['kriteria']['id_kriteria'] ?? uniqid())
-                ->values();
-
-            $totalWeightedValue = $filtered->map(function ($penilaian) use ($alt, $maxPerKriteria) {
-                $id_kriteria = $penilaian['kriteria']['id_kriteria'] ?? null;
-                $value = (float) ($penilaian['sub_kriteria']['nilai'] ?? 0);
-                $max = $maxPerKriteria[$id_kriteria] ?? 1;
-
-                // Normalisasi
-                $nilai_normalisasi = $max > 0 ? $value / $max : 0;
-
-                // Bobot fallback jika null
-                $bobot = $penilaian['kriteria']['bobot'] ?? match ($id_kriteria) {
-                    1, 2 => 0.5,
-                    3, 4, 5, 6, 7, 8 => 0.75,
-                    9, 10, 11, 12 => 1.0,
-                    default => 1.0,
-                };
-
-                $hasil = round($nilai_normalisasi * $bobot, 4);
-
-                logger("{$alt['nama_lengkap']} - Kriteria {$id_kriteria} : Normalisasi {$nilai_normalisasi} x Bobot {$bobot} = {$hasil}");
-                return $hasil;
-            })->sum();
-
-            return [
-                'id_alternatif' => $alt['id_alternatif'],
-                'nama_lengkap' => $alt['nama_lengkap'],
-                'total_weighted_value' => round($totalWeightedValue, 4),
-            ];
-        });
-
-        // 4. Format hasil untuk ditampilkan
-        $results = $results->map(function ($item, $index) {
+        // Ubah hasil skor menjadi data siap tampil
+        $results = collect($skorPreferensi)->map(function ($item, $index) {
             return [
                 'no' => $index + 1,
                 'id_alternatif' => $item['id_alternatif'],
                 'nama_lengkap' => $item['nama_lengkap'],
-                'nilai' => $item['total_weighted_value'],
+                'nilai' => $item['skor'], // ganti dari total_weighted_value ke skor
+                'log' => $item['log'],    // jika ingin ditampilkan penjelasannya
             ];
         });
 
+        $this->simpanKeRangking($skorPreferensi);
+
+
         return view('program.penilaian.result', compact('results'));
     }
+
 
 
 }
